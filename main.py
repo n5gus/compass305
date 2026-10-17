@@ -3,6 +3,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
+from dotenv import load_dotenv
+load_dotenv()
 
 SCHOOLS = json.load(open("schools.json"))
 BY_ID = {s["id"]: s for s in SCHOOLS}
