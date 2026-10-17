@@ -5,6 +5,7 @@
 Finding a school in Miami-Dade means juggling the district finder (public only), private-school lists, state report cards, and phone calls — often in a second language. Compass305 puts **public and private schools on one map**, adds **official state grades**, and answers families' questions **with citations, in English, Spanish, or Haitian Creole**.
 
 - **Live API:** https://compass305-production.up.railway.app
+- **App:** https://16bf3b4e-6832-4665-bf94-c7203d5f0b3b.archie.site
 - **Frontend:** built in Archie (map-first UI, Leaflet + OpenStreetMap)
 
 ## Features
