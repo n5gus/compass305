@@ -9,10 +9,10 @@ load_dotenv()
 SCHOOLS = json.load(open("schools.json"))
 BY_ID = {s["id"]: s for s in SCHOOLS}
 
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-MODEL = os.getenv("MODEL", "gemini-2.0-flash")
-llm = OpenAI(api_key=GEMINI_KEY,
-             base_url="https://generativelanguage.googleapis.com/v1beta/openai/") if GEMINI_KEY else None
+LLM_KEY = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+MODEL = os.getenv("MODEL", "llama-3.3-70b-versatile")
+llm = OpenAI(api_key=LLM_KEY, base_url=LLM_BASE_URL, timeout=20, max_retries=1) if LLM_KEY else None
 
 app = FastAPI(title="Compass305")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -55,7 +55,7 @@ def ask(body: Ask):
     if not recs:
         raise HTTPException(400, "pick at least one school")
     if not llm:
-        return {"answer": "AI is off (no GEMINI_API_KEY set).", "cited_ids": []}
+        return {"answer": "AI is off (no LLM_API_KEY set).", "cited_ids": []}
     prompt = ("Answer the family's question using ONLY these school records. "
               "If the answer isn't in them, say 'Not in our data.' "
               "Cite school ids in [brackets]. Reply in the language of the question.\n\n"
