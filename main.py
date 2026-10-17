@@ -24,7 +24,19 @@ def km(lat1, lon1, lat2, lon2):
     return 12742 * math.asin(math.sqrt(a))
 
 @app.get("/schools")
-def schools(lat: float, lon: float, grade: int | None = None, radius_km: float = 5, type: str | None = None):
+def schools(lat: float, lon: float, grade: str | None = None, radius_km: float = 5, type: str | None = None):
+    g = (grade or "").strip().upper()
+    if g in ("", "ANY", "ALL"):
+        grade = None
+    elif g in ("PK", "PREK", "VPK"):
+        grade = -1
+    elif g in ("K", "KG"):
+        grade = 0
+    else:
+        try:
+            grade = int(g)
+        except ValueError:
+            raise HTTPException(422, "grade must be PK, K, or 1-12")
     out = []
     for s in SCHOOLS:
         if s["lat"] is None or s["lon"] is None:
@@ -47,23 +59,39 @@ def school(sid: str):
 
 class Ask(BaseModel):
     question: str
-    school_ids: list[str]
+    school_ids: list[str] = []
+    mode: str = "grounded"
 
 @app.post("/ask")
 def ask(body: Ask):
-    recs = [BY_ID[i] for i in body.school_ids if i in BY_ID][:5]
-    if not recs:
-        raise HTTPException(400, "pick at least one school")
     if not llm:
-        return {"answer": "AI is off (no LLM_API_KEY set).", "cited_ids": []}
-    prompt = ("Answer the family's question using ONLY these school records. "
-              "If the answer isn't in them, say 'Not in our data.' "
-              "Cite school ids in [brackets]. Reply in the language of the question.\n\n"
-              f"RECORDS:\n{json.dumps(recs)}\n\nQUESTION: {body.question}")
+        return {"answer": "AI is off (no LLM_API_KEY set).", "cited_ids": [], "found": False, "mode": body.mode}
+    recs = [BY_ID[i] for i in body.school_ids if i in BY_ID][:5]
+    if body.mode == "general":
+        names = ", ".join(r["name"] for r in recs)
+        prompt = ("You help families in Miami-Dade County, Florida understand schools. "
+                  "Give a short, general, helpful answer (max 4 sentences) based on common knowledge "
+                  "about Miami-Dade public and private schools. Do not invent specific facts about a named school; "
+                  "if policies vary, say so and suggest contacting the school or dadeschools.net. "
+                  "Reply in the language of the question."
+                  + (f" Schools the family is looking at: {names}." if names else "")
+                  + f"\n\nQUESTION: {body.question}")
+    else:
+        if not recs:
+            raise HTTPException(400, "pick at least one school")
+        prompt = ("Answer the family's question using ONLY these school records. "
+                  "If the answer isn't in them, reply exactly 'Not in our data.' and nothing else. "
+                  "Cite school ids in [brackets]. Reply in the language of the question.\n\n"
+                  f"RECORDS:\n{json.dumps(recs)}\n\nQUESTION: {body.question}")
     try:
-        r = llm.chat.completions.create(model=MODEL, temperature=0,
+        r = llm.chat.completions.create(model=MODEL, temperature=0.2 if body.mode == "general" else 0,
                                         messages=[{"role": "user", "content": prompt}])
     except Exception as e:
         raise HTTPException(502, f"AI error: {e}")
-    ans = r.choices[0].message.content
-    return {"answer": ans, "cited_ids": [s["id"] for s in recs if s["id"] in ans]}
+    ans = (r.choices[0].message.content or "").strip()
+    if body.mode == "general":
+        return {"answer": ans, "cited_ids": [], "found": True, "mode": "general"}
+    if ans.lower().startswith("not in our data"):
+        return {"answer": "Not in our data.", "cited_ids": [], "found": False, "mode": "grounded"}
+    cited = [s["id"] for s in recs if s["id"] in ans]
+    return {"answer": ans, "cited_ids": cited, "found": bool(cited), "mode": "grounded"}
